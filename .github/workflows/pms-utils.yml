@@ -1,0 +1,62 @@
+name: pms-utils
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    container: docker.io/gentoo/stage3
+
+    steps:
+      - name: sync repo
+        run: emerge-webrsync
+
+      - name: enable binpkgs
+        run: echo "FEATURES=\"binpkg-request-signature getbinpkg\"" >> /etc/portage/make.conf
+
+      - name: install pkgcore
+        run: emerge pkgcore
+
+      - name: install pip
+        run: emerge dev-python/pip
+
+      - name: install pms-utils
+        run: pip install --break-system-packages pms-utils
+
+      - uses: actions/checkout@v4
+
+      - name: regen metadata
+        run: pmaint regen .
+
+      - name: verify metadata
+        run: .github/workflows/pms-utils-metadata.py .
+
+  profiles:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: install pms-utils
+        run: pip install pms-utils
+
+      - uses: actions/checkout@v4
+
+      - name: verify profiles
+        run: .github/workflows/pms-utils-profiles.py .
+
+  notify-irc:
+    runs-on: ubuntu-latest
+    if: ${{ failure() && github.event_name == 'push' }}
+    needs: [metadata, profiles]
+
+    steps:
+      - name: Inform on IRC
+        uses: rectalogic/notify-irc@v1
+        with:
+          channel: "##gentoolkit"
+          server: "irc.libera.chat"
+          nickname: "github-ci"
+          message: CI failure detected on job ${{ github.workflow }} - ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }} - CC Jannik2099
